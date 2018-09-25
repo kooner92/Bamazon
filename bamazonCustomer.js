@@ -17,64 +17,82 @@ var connection = mysql.createConnection({
 });
 
 // connect to the mysql server and sql database
-connection.connect(function(err) {
+connection.connect(function (err) {
   if (err) throw err;
   console.log("connected as id " + connection.threadId + "\n");
-  start();
 });
 
+
+var itemPrice;
+
+// display items for sale functions
+
+function run() {
+  connection.query('SELECT * FROM products', function (err, results) {
+    if (err) throw err;
+
+    for (i = 0; i < results.length; i++) {
+      console.log('ID:' + results[i].id +
+        ' Product: ' + results[i].product_name +
+        ' Price: ' + '$' + results[i].price +
+        '(Amount remaining: ' + results[i].stock_quantity + ')')
+    }
+
+    start();
+  })
+}
+// function to prompt user
+
 function start() {
-    // query the database for all items being auctioned
-    connection.query("SELECT * FROM products", function(err, results) {
-      if (err) throw err;
-      // once you have the items, prompt the user for which they'd like to bid on
-      inquirer
-        .prompt([
-          {
-            name: "choice",
-            type: "rawlist",
-            choices: function() {
-              var choiceArray = [];
-              for (var i = 0; i < results.length; i++) {
-                choiceArray.push(results[i].product_name);
-              }
-              return choiceArray;
-            },
-            message: "What is the ID of the item you want to purchase?"
-          },
-          {
-            name: "stock",
-            type: "input",
-            message: "How many units would you like to buy"
-          }
-        ])
-        .then(function(answer) {
-          // get the information of the chosen item
-          var chosenItem;
-          for (var i = 0; i < results.length; i++) {
-            if (results[i].item_name === answer.choice) {
-              chosenItem = results[i];
-            }
-          }
-  
-            // bid was high enough, so update db, let the user know, and start over
-            connection.query(
-              "UPDATE products SET ? WHERE ?",
-              [
-                {
-                  stock_quantity: answer
-                },
-                {
-                  id: chosenItem.id
-                }
-              ],
-              function(error) {
-                if (error) throw err;
-                console.log("Bought units");
-                start();
-              }
-            );
-         
-        });
-    });
+  inquirer.prompt([{
+    name: 'selectItem',
+    message: "What is the ID of the item you want to purchase?",
+  }, {
+    name: 'quantity',
+    message: 'How many would you like to order?',
+
+  }]).then(function (answer) {
+    connection.query('SELECT * FROM products WHERE id = ?', [answer.selectItem], function (err, results) {
+      if (answer.quantity > results[0].stock_quantity) {
+        console.log('Sorry, come back with more money');
+        console.log('This order has been cancelled');
+        newOrder();
+      }
+      else {
+        itemPrice = results[0].price * answer.quantity;
+        console.log('Thanks for your order');
+        console.log('Total price is $' + itemPrice);
+
+        connection.query('UPDATE products SET ? Where ?', [{
+          stock_quantity: results[0].stock_quantity - answer.quantity
+        }, {
+          id: answer.selectItem
+        }], function (err, results) { });
+        newOrder();
+      }
+    })
+
+  }, function (err, results) { })
 };
+
+// new order function
+
+function newOrder() {
+  inquirer.prompt([{
+    type: 'confirm',
+    name: 'choice',
+    message: 'Would you like to buy something else?'
+  }]).then(function (answer) {
+    if (answer.choice) {
+      start();
+      run();
+    }
+    else {
+      console.log('Thank you for shopping!');
+      connection.end();
+    }
+  })
+};
+
+
+run();
